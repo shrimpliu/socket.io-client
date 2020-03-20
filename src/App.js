@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import { Button, Row, Col, Input, Select, List, Switch, Tag } from 'antd';
 import io from 'socket.io-client';
 import isObject from 'lodash/isObject';
+import take from 'lodash/take';
+import keys from 'lodash/keys';
 import dayjs from 'dayjs';
+import ReactJson from 'react-json-view';
 import './App.css';
 
 function App() {
@@ -14,7 +17,7 @@ function App() {
   const [flows, setFlows] = useState([]);
   const [event, setEvent] = useState("");
   const [payload, setPayload] = useState("");
-  const [listens, setListens] = useState([]);
+  const [listens, setListens] = useState({});
   const [listen, setListen] = useState("");
 
   const toggleConnect = () => {
@@ -68,7 +71,7 @@ function App() {
     if (flow.sender) {
       flow.time = dayjs().format("HH:mm:ss");
     }
-    setFlows(flows => [flow, ...flows]);
+    setFlows(flows => take([flow, ...flows], 100));
   };
 
   const sendMessage = () => {
@@ -79,31 +82,70 @@ function App() {
   };
 
   const listenEvent = () => {
+    openListen(listen);
+    setListen("");
+  };
+
+  const openListen = listen => {
     if (listen && socket) {
-      setListens(listens => [...listens, listen]);
-      setListen("");
-      socket.on(listen, data => {
-        let payload = "";
-        if (data) {
-          if(isObject(data)) {
-            payload = JSON.stringify(data, null, 2);
-          } else {
-            payload = data;
-          }
-        }
-        appendServerFlow(getEventMessage(listen, payload));
-      });
+      setListens(listens => ({
+        ...listens,
+        [listen]: true,
+      }));
+      if (!socket.hasListeners(listen)) {
+        socket.on(listen, data => onEvent(listen, data));
+      }
+    }
+  };
+
+  const closeListen = listen => {
+    if (listen && socket) {
+      setListens(listens => ({
+        ...listens,
+        [listen]: false,
+      }));
+      socket.off(listen);
+    }
+  };
+
+  const toggleListen = listen => {
+    if (listens[listen]) {
+      closeListen(listen);
+    } else {
+      openListen(listen);
     }
   };
 
   const getEventMessage = (event, payload) => (
     <div>
-      <Tag>{event}</Tag>
+      <Tag color="#87d068">{event}</Tag>
       <div>
         {payload && <span>{payload}</span>}
       </div>
     </div>
   );
+
+  const onEvent = (listen, data) => {
+    let payload = "";
+    if (data) {
+      if(isObject(data)) {
+        payload = (
+          <ReactJson 
+            src={data}
+            theme="summerfruit:inverted"
+            name={false}
+            iconStyle="square"
+            indentWidth={2}
+            displayDataTypes={false}
+            collapsed={true}
+          />
+        )
+      } else {
+        payload = data;
+      }
+    }
+    appendServerFlow(getEventMessage(listen, payload));
+  };
 
   return (
     <div className="App">
@@ -203,16 +245,16 @@ function App() {
               </Button>
             </Col>
             <Col span={24}>
-            {listens.map(listen => (
-              <Row key={listen} gutter={[4, 4]}>
+              {keys(listens).map(listen => (
+                <Row key={listen} gutter={[4, 4]}>
                 <Col span={4}>
-                  <Switch checked={true} size="small" />
+                  <Switch checked={listens[listen]} size="small" onClick={() => toggleListen(listen)} />
                 </Col>
                 <Col span={20}>
                   {listen}
                 </Col>
               </Row>
-            ))}
+              ))}
             </Col>
           </Row>
         </Col>
